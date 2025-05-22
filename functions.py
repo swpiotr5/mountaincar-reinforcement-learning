@@ -36,17 +36,16 @@ def train_custom_reward(env, n_bins, episodes, obs_low, bin_size, alpha, gamma, 
         state = discretize(obs, obs_low, bin_size, n_bins)
         done = False
         total_reward = 0
-
         action = choose_action(q_table, state, epsilon, env.action_space.n)
 
         while not done:
-            next_obs, reward, terminated, truncated, _ = env.step(action)
+            next_obs, _, terminated, truncated, _ = env.step(action)
             next_state = discretize(next_obs, obs_low, bin_size, n_bins)
             done = terminated or truncated
 
             next_action = choose_action(q_table, next_state, epsilon, env.action_space.n)
 
-            # Bonusy/kary 
+            # Nagroda customowa
             position, velocity = next_obs
             reward = -1 + abs(velocity) * 0.5
             if position >= 0.5:
@@ -68,7 +67,8 @@ def train_custom_reward(env, n_bins, episodes, obs_low, bin_size, alpha, gamma, 
 
         rewards.append(total_reward)
 
-    return rewards
+    return rewards, q_table
+
 
 def train_default_reward(env, n_bins, episodes, obs_low, bin_size, alpha, gamma, min_epsilon, epsilon_decay, algorithm='q'):
     q_table = np.zeros((n_bins, n_bins, env.action_space.n))
@@ -80,7 +80,6 @@ def train_default_reward(env, n_bins, episodes, obs_low, bin_size, alpha, gamma,
         state = discretize(obs, obs_low, bin_size, n_bins)
         done = False
         total_reward = 0
-
         action = choose_action(q_table, state, epsilon, env.action_space.n)
 
         while not done:
@@ -89,9 +88,6 @@ def train_default_reward(env, n_bins, episodes, obs_low, bin_size, alpha, gamma,
             done = terminated or truncated
 
             next_action = choose_action(q_table, next_state, epsilon, env.action_space.n)
-
-            position, velocity = next_obs
-            reward = -1
 
             if algorithm == 'q':
                 update_q(q_table, state, action, reward, next_state, alpha, gamma)
@@ -107,4 +103,4 @@ def train_default_reward(env, n_bins, episodes, obs_low, bin_size, alpha, gamma,
 
         rewards.append(total_reward)
 
-    return rewards
+    return rewards, q_table

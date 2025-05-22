@@ -8,11 +8,13 @@ import imageio
 from PIL import Image, ImageDraw, ImageFont
 
 n_bins = 40  # Zwiększamy rozdzielczość przestrzeni stanów
-episodes = 100 # więcej epizodów na naukę
+episodes = 10000 # więcej epizodów na naukę
 min_epsilon = 0.01       # Mniejsza minimalna eksploracja
 epsilon = 1.0
 
 algorithms = ['q', 'sarsa']
+best_reward = float('-inf')
+best_q_table = None
 episode_rewards_all = {alg: [] for alg in algorithms}
 
 # Skrajne wartości
@@ -36,7 +38,6 @@ results = {}
 q_table_dict = {}
 
 for param_name, params in param_sets.items():
-    q_table = np.zeros((n_bins, n_bins, env.action_space.n))
     for variant in ['default', 'custom']:
         for alg in algorithms:
             print(f"Trenuję: {alg.upper()} - {variant} - {param_name}")
@@ -46,21 +47,27 @@ for param_name, params in param_sets.items():
             epsilon_decay = params["epsilon_decay"]
 
             if variant == 'default':
-                rewards = train_default_reward(
+                rewards, q_table  = train_default_reward(
                     env, n_bins, episodes, obs_low, bin_size,
                     alpha, gamma, min_epsilon, epsilon_decay,
                     algorithm=alg
                 )
             else:
-                rewards = train_custom_reward(
+                rewards, q_table = train_custom_reward(
                     env, n_bins, episodes, obs_low, bin_size,
                     alpha, gamma, min_epsilon, epsilon_decay,
                     algorithm=alg
                 )
-            
             results[f"{alg}_{variant}_{param_name}"] = rewards
             q_table_dict[f"{alg}_{variant}_{param_name}"] = np.copy(q_table)
-
+            
+            # Sprawdź czy to najlepszy model
+            avg_reward = np.mean(rewards[-100:])  # średnia z ostatnich 100 epizodów
+            if avg_reward > best_reward:
+                best_reward = avg_reward
+                best_q_table = np.copy(q_table)
+                best_label = f"{alg}_{variant}_{param_name}"
+                print(f"Nowy najlepszy model: {best_label} ze średnią nagrodą: {avg_reward:.2f}")
 
 param_sets_used = set(label.split("_")[-1] for label in results.keys())
 
@@ -89,11 +96,10 @@ for param_name in param_sets_used:
     print(f"✅ Zapisano zestawowy wykres: {filename}")
 
 
-best_label = "sarsa_custom_SlowThinker"
-q_table = q_table_dict["sarsa_custom_SlowThinker"]
-print("MAX Q:", np.max(q_table))
+print(f"\nUżywam najlepszego modelu: {best_label}")
+print("MAX Q:", np.max(best_q_table))
 
-for i in range(1, 20):
+for i in range(1, 6):
     env = gym.make("MountainCar-v0", render_mode="rgb_array")
     obs, _ = env.reset()
     state = discretize(obs, obs_low, bin_size, n_bins)
@@ -112,9 +118,8 @@ for i in range(1, 20):
         img = Image.fromarray(frame)
         draw = ImageDraw.Draw(img)
         draw.text((10, 10), label_text, font=font, fill=(255, 255, 255))
-        frames.append(np.array(img))
-
-        action = np.argmax(q_table[state])
+        frames.append(np.array(img))        
+        action = np.argmax(best_q_table[state])
         next_obs, _, terminated, truncated, _ = env.step(action)
         state = discretize(next_obs, obs_low, bin_size, n_bins)
         done = terminated or truncated
