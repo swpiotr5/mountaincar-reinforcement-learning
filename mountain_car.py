@@ -4,15 +4,11 @@ from functions import *
 import matplotlib.pyplot as plt
 import os
 env = gym.make("MountainCar-v0")
-
-#TEST 1 
-alpha = 0.2   # Zwiększamy szybkość uczenia           
-gamma = 0.99      
-epsilon_decay = 0.999    # wolniejszy spadek eksploracji       
-
+import imageio
+from PIL import Image, ImageDraw, ImageFont
 
 n_bins = 40  # Zwiększamy rozdzielczość przestrzeni stanów
-episodes = 15000  # więcej epizodów na naukę
+episodes = 100 # więcej epizodów na naukę
 min_epsilon = 0.01       # Mniejsza minimalna eksploracja
 epsilon = 1.0
 
@@ -37,8 +33,10 @@ param_sets = {
 }
 
 results = {}
+q_table_dict = {}
 
 for param_name, params in param_sets.items():
+    q_table = np.zeros((n_bins, n_bins, env.action_space.n))
     for variant in ['default', 'custom']:
         for alg in algorithms:
             print(f"Trenuję: {alg.upper()} - {variant} - {param_name}")
@@ -61,6 +59,8 @@ for param_name, params in param_sets.items():
                 )
             
             results[f"{alg}_{variant}_{param_name}"] = rewards
+            q_table_dict[f"{alg}_{variant}_{param_name}"] = np.copy(q_table)
+
 
 param_sets_used = set(label.split("_")[-1] for label in results.keys())
 
@@ -87,3 +87,40 @@ for param_name in param_sets_used:
     plt.savefig(filename)
     plt.close()
     print(f"✅ Zapisano zestawowy wykres: {filename}")
+
+
+best_label = "sarsa_custom_SlowThinker"
+q_table = q_table_dict["sarsa_custom_SlowThinker"]
+print("MAX Q:", np.max(q_table))
+
+for i in range(1, 20):
+    env = gym.make("MountainCar-v0", render_mode="rgb_array")
+    obs, _ = env.reset()
+    state = discretize(obs, obs_low, bin_size, n_bins)
+    done = False
+    frames = []
+
+    label_text = f"{best_label.replace('_', ' ').upper()} — EPIZOD {i}"
+
+    try:
+        font = ImageFont.truetype("arial.ttf", 16)
+    except:
+        font = ImageFont.load_default()
+
+    while not done:
+        frame = env.render()
+        img = Image.fromarray(frame)
+        draw = ImageDraw.Draw(img)
+        draw.text((10, 10), label_text, font=font, fill=(255, 255, 255))
+        frames.append(np.array(img))
+
+        action = np.argmax(q_table[state])
+        next_obs, _, terminated, truncated, _ = env.step(action)
+        state = discretize(next_obs, obs_low, bin_size, n_bins)
+        done = terminated or truncated
+
+    env.close()
+
+    video_path = f"run_{i}_{best_label}.mp4"
+    imageio.mimsave(video_path, frames, fps=30)
+    print(f"🎥 Zapisano epizod {i} jako: {video_path}")
